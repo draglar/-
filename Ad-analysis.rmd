@@ -396,7 +396,7 @@ Lake David,Lake James,Lisamouth,Michelleside,Millerbury,Robertfurt,South Lisa,We
 
 ```{r}
 library('tidyverse')
-view(advertising)
+head(advertising)
 ```
 ```{r}
 library('caret')
@@ -417,53 +417,36 @@ advertising$country_new <- label_encode('Country',advertising[,-c(5,9)])
 adverts <- advertising[,-c(5,6,8,9)]
 head(adverts)
 ```
-```{r}
+<h1>**Implementing the solution**</h1>
+
+##**Decision tree (rpart)**
+Loading libraries
+
+```{r libraries}
 library('rpart')
 library(rattle)
 
 adverts$Class <- adverts$`Clicked on Ad`
 adverts <- adverts[,-c(6)]
 ```
-```{r}
-#data splicing
-set.seed(6)
-train <- sample(nrow(adverts),size = ceiling(0.80*nrow(adverts)),replace = FALSE)
-# training set
-train_set <- adverts[train,]
-# Validation set
-Validation_set <- adverts[-train,]
-```
-```{r}
-tree <- rpart(Class~.,data=train_set,method = "class",
-              control = rpart.control(minsplit = 8, cp = 0.1))
-# Visualize the decision tree with rpart.plot
-# rpart.plot(tree, nn=TRUE)
-#Testing the model
-pred <- predict(object=tree,Validation_set[,-c(10)],type="class")
-t <- table(Validation_set$Class,pred)
-return (t)
-
-accur <- cm_2x2_accuracy(t)
-print(accur)
-
-confusionMatrix(t)
-# xt$byClass
-```
-```{r}
+```{r functions}
 # I know this is probably overkill but im probably going to use it other than here
+library('rpart')
+library('rpart.plot')
+library('caret')
 get_train_validation <- function (dataset){
-  set.seed(6)
   # Geting the row numbers for train sample (80% of the dataset)
   train <- sample(c(1:nrow(dataset)),size = ceiling(0.80*nrow(dataset)),replace = FALSE)
   # training set == part of the dataset in the train sample
   train_set <- dataset[train,]
   # Validation set == part of the dataset not in the train sample
-  Validation_set <- adverts[-train,]
+  Validation_set <- dataset[-train,]
   # fix for R not accepting multiple argument returns
   sets <- list("Train" = train_set, "Validation" = Validation_set)
   return (sets)
 }
 rpart_tree <- function (train_set, Validation_set, min_split=8, Cp=0.1,min_depth =2, maxdepth = 30){
+  # Setting the hyperparameters
   tree <- rpart(Class~.,data=train_set,method = "class",
               control = rpart.control(minsplit = min_split, cp = Cp,
                mindepth = min_depth,maxdepth = maxdepth,xval = 10
@@ -475,7 +458,7 @@ rpart_tree <- function (train_set, Validation_set, min_split=8, Cp=0.1,min_depth
   accur <- cm_2x2_accuracy(t)
 
   hyper <- list('minsplit' = min_split, 'cp' = Cp, 'mindepth' = min_depth,'maxdepth' = maxdepth,'xval' = 10)
-  resul <- list("tree" = tree, "Accuracy" = accur, 'Hyper_parameters' = hyper)
+  resul <- list("tree" = tree,'table'= t, "Accuracy" = accur, 'Hyper_parameters' = hyper)
   return (resul)
 }
 # Accuracy was Evaluated using a confusion matrix
@@ -492,7 +475,7 @@ cm_2x2_accuracy <- function (t){
   return (acuracy)
 }
 ```
-```{r}
+```{r rpart_tree}
 accuracy <- 0
 minsplit <- c(5,10,15, 20)
 cp <- c(0.1,0.01,0.001,0.0001)
@@ -506,20 +489,29 @@ for (min_split in minsplit){
       results <- rpart_tree(set$Train,set$Validation,min_split=min_split , Cp=Cp, min_depth = mn_dpth )
       # Checking to see if the new accuracy is greater than the existing best accuracy
       if (results$Accuracy > accuracy){
+        best_table <- results$table
         accuracy <- results$Accuracy
         best_tree <- results$tree
         best_hypers <- results$Hyper_parameters
       }
-      # print(results$Accuracy)
     }
   }
 }
-# set <- get_train_validation(adverts)
 print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
 rpart.plot(best_tree, nn=TRUE)
+confusionMatrix(best_table)
 ```
-Rpart with an accuracy of 96.5
-```{r}
+<ul>
+<p>The best decision tree had an accuracy of 98.5
+<li>99 true positives
+<li> 3 false positives
+<li> 0 false negatives and
+<li> 98 true negatives
+</ul>
+the model has performed really well classifying the users
+
+```{r svm_function}
+library('e1071')
 svm_class <- function (train_set,Validation_set,c=0.01){
   classified <- svm(Class~.,data=train_set,
                     type = 'C-classification',
@@ -531,12 +523,12 @@ svm_class <- function (train_set,Validation_set,c=0.01){
   t <- table(Validation_set$Class,pred)
   accur <- cm_2x2_accuracy(t)
 
-  resul <- list("model" = classified, "Accuracy" = accur, 'Hyper_parameter' = c)
+  resul <- list("model" = classified,'table'= t, "Accuracy" = accur, 'Hyper_parameter' = c)
   return (resul)
 }
-
 ```
-```{r}
+
+```{r svm_code}
 accuracy <- 0
 C_ <- c(0.001,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2,5)
 for (i in C_){
@@ -545,29 +537,71 @@ for (i in C_){
   results <- svm_class(set$Train,set$Validation, c = i)
   # Checking to see if the new accuracy is greater than the existing best accuracy
   if (results$Accuracy >= accuracy){
+    best_table <- results$table
     accuracy <- results$Accuracy
     best_model <- results$model
     best_hypers <- results$Hyper_parameter
   }
 }
 print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
-
+confusionMatrix(best_table)
 ```
-```{r}
-library('kernlab')
-grid <- expand.grid(C = c(0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2,5))
-set.seed(3233)
-train_set$Class <- as.factor(train_set$Class)
-svm_Linear_Grid <- train(Class~.,data=train_set, method = "svmRadial",
-                         type = 'C-classification',
-                    trControl=trctrl,
-                    preProcess = c("center", "scale"),
-                    tuneGrid = grid,
-                    tuneLength = 10
-)
-
-svm_Linear_Grid
 
 
+```{r knn_function}
+library('class')
+k_nn <- function (train_,test_,K=10){
+  x <- ncol(train_)
+  train_x <- train_[,1:(x-1)]
+  train_y <- train_[[x]]
 
+  validation_x <- test_[,1:(x-1)]
+  validation_y <- test_[[x]]
+
+  pred <- knn(train = train_x, test = validation_x, cl = train_y, k = K)
+  t <- table(validation_y,pred)
+  # view(t)
+  accur <- cm_2x2_accuracy(t)
+
+  hyper <- list('k :', K)
+  resul <- list('table'= t,"Accuracy" = accur, 'Hyper_parameters' = hyper)
+  return (resul)
+}
 ```
+```{r knn_code}
+for (i in c(5:30)){
+  sets <- get_train_validation(adverts[,-c(6)])
+  results <- suppressWarnings(k_nn(sets$Train, sets$Validation, i))
+  if (results$Accuracy > accuracy){
+    best_table <- results$table
+    accuracy <- results$Accuracy
+    best_hypers <- results$Hyper_parameters
+  }
+}
+print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
+confusionMatrix(best_table)
+```
+<ul>
+<p>The best svm classification model had an accuracy of 98.0
+<li> 98 true positives
+<li> 1 false positives
+<li> 2 false negatives and
+<li> 98 true negatives
+</ul>
+the model has performed really well classifying the users
+
+<h1>**Challenging the solution**</h1>
+
+Given these are three models I gauged to see their performances and tuned them to get the best models in each category, using other classification models and compare them to see which one performs best.
+
+<h1>**Conclusion**</h1>
+
+All the models performed really well, but the decision tree performed the best at 98.5 % accuracy
+
+<h1>**Follow up questions**</h1>
+
+<h2>**Did we have the right data**</h2>
+Yes the data was appropriate for the question asked
+
+<h2>**Did we have the right questions**</h2>
+Yes the question was right for the data provided
