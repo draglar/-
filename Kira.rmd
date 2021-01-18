@@ -1,0 +1,794 @@
+---
+title: "R Notebook"
+author: "eyan"
+date: "16/01/2021"
+output:
+  html_document:
+    df_print: paged
+---
+<h1>**1. Problem Definition**</h1>
+ The Sales and Marketing team of Kira Plastinina would like to understand their customer’s behavior from data that they have collected over the past year. More specifically, they would like to learn the characteristics of customer groups.
+
+<h2>**Metrics of success**</h2>
+
+The analysis will be successful if I can identify trends in groups of users and come up with a model that can take that into account to identify user that will bring revenue to the company or not
+
+<h2>**context**</h2>
+About **<a href='https://kiraplastinina.ru/'>Kira Plastinina</a>** is a Russian brand that is sold through a defunct chain of retail stores in Russia, Ukraine, Kazakhstan, Belarus, China, Philippines, and Armenia.
+
+
+<h1>**2. Data Sourcing**</h1>
+The data was collected through various means:
+<ul>
+<li>"Administrative", "Administrative Duration", "Informational", "Informational Duration", "Product Related" and "Product Related Duration" represents the number of different types of pages visited by the visitor in that session and total time spent in each of these page categories. The values of these features are derived from the URL information of the pages visited by the user and updated in real-time when a user takes an action, e.g. moving from one page to another.
+
+<li>The "Bounce Rate", "Exit Rate" and "Page Value" features represent the metrics measured by "Google Analytics" for each page in the e-commerce site.
+
+<li>The value of the "Bounce Rate" feature for a web page refers to the percentage of visitors who enter the site from that page and then leave ("bounce") without triggering any other requests to the analytics server during that session.
+
+<li>The value of the "Exit Rate" feature for a specific web page is calculated as for all pageviews to the page, the percentage that was the last in the session.
+
+<li>The "Page Value" feature represents the average value for a web page that a user visited before completing an e-commerce transaction
+
+<li>The "Special Day" feature indicates the closeness of the site visiting time to a specific special day (e.g. Mother’s Day, Valentine's Day) in which the sessions are more likely to be finalized with the transaction. The value of this attribute is determined by considering the dynamics of e-commerce such as the duration between the order date and delivery date. For example, for Valentina’s day, this value takes a nonzero value between February 2 and February 12, zero before and after this date unless it is close to another special day, and its maximum value of 1 on February 8.
+
+The dataset also includes the operating system, browser, region, traffic type, visitor type as returning or new visitor, a Boolean value indicating whether the date of the visit is weekend, and month of the year.
+
+</ul>
+
+<h1>**3. Checking the data**</h1>
+
+```{r loading}
+library('data.table')
+library('tidyverse')
+customers <- fread('http://bit.ly/EcommerceCustomersDataset')
+```
+
+
+```{r head}
+head(customers)
+```
+```{r tail}
+tail(customers)
+```
+```{r data_types}
+str(customers)
+```
+<h1>**4. Cleaning the data**</h1>
+<p>Checking for null values
+
+```{r null}
+colSums(is.na(customers))
+```
+14 null rows in multiple columns were found
+```{r}
+customers[is.na(customers$Administrative)==TRUE]
+```
+Null values exist in the same rows and will be eliminated
+```{r na_removed}
+dim(customers)
+dim(na.omit(customers))
+customers <- na.omit(customers)
+```
+Checking for duplicates
+```{r duplicates}
+dim(customers[duplicated(customers)])
+```
+117  duplicated variables and they will be eliminated
+```{r}
+customers <- customers[!duplicated(customers)]
+```
+Getting a summary of the dataset
+```{r summary}
+summary(customers)
+```
+assigning column values to variables for ease of use
+```{r cols}
+admin                   <-customers$Administrative
+admin_duration          <-customers$Administrative_Duration
+info                    <-customers$Informational
+info_duration           <-customers$Informational_Duration
+product                 <-customers$ProductRelated
+product_related_duration<-customers$ProductRelated_Duration
+bounce_rates            <-customers$BounceRates
+exit_rates              <-customers$ExitRates
+page_values             <-customers$PageValues
+special_day             <-customers$SpecialDay
+month                   <-customers$Month
+os                      <-customers$OperatingSystems
+browser                 <-customers$Browser
+region                  <-customers$Region
+traffic_type            <-customers$TrafficType
+visitor_type            <-customers$VisitorType
+weekend                 <-customers$Weekend
+revenue                 <-customers$Revenue
+```
+Checking for Outliers in the dataset
+```{r boxplots}
+out <- boxplot(admin)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(admin_duration)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(info)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(info_duration)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(product)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(product_related_duration)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(bounce_rates)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(exit_rates)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(page_values)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(special_day)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(os)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(browser)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(region)$out
+print(paste(length(out),'outliers'))
+```
+```{r}
+out <- boxplot(traffic_type)$out
+print(paste(length(out),'outliers'))
+```
+While there were many outliers in the dataset, removing them would affect the data, since the users are unique users from different countries with different norms, eliminating these would have a bias against users not withing the 'normal' range
+
+## EDA
+
+```{r}
+get.mode <- function(v){
+  uniq <- unique(v)
+  # gets all the unique values in the column
+  # match (v, uniq) matches a value to the unique values and returns the index
+  # tabulate (match (v, uniq)) takes the values in uniq and counts the number of times each integer occurs in it.
+  # which.max() gets the index of the first maximum in the tabulated list
+  # then prints out the uniq value
+  uniq[ which.max (tabulate (match (v, uniq)))]
+}
+# lazy method of performing univariate analysis
+univar <- function (column,dataset,plot='hist'){
+  subject <- dataset[[column]] # Get the subject of the analysis
+  # Check the plot specified if none specified default is a histogram
+if (plot == 'category'){
+# For categorical data best tto plot barplots for each category
+    ggplot(dataset,aes(subject))+ geom_bar(fill='#222222')
+
+  }else{ #if not categorical continue here
+  if (plot == 'hist') { # if histogram plot a histogram
+    plt <- geom_histogram(fill = "#222222", colour = "#038b8d")
+  }
+  else if (plot == 'density'){ # if density plot a density plot
+    plt <- geom_density()
+  }
+
+  print(paste('mean : ',mean(subject)))
+  print(paste('mode : ',get.mode(subject)))
+  print(paste('median : ',median(subject) ))
+  print(paste('max : ', max(subject),' min :', min(subject)))
+  print(paste('quantile 5%: ', quantile(subject,probs=c(0.05)),'quantile 95%: ', quantile(subject,probs=c(0.95)) ))
+  print(paste('standard deviation :', sd(subject)))
+
+  ggplot(dataset,aes(subject)) + plt
+}
+}
+
+```
+
+```{r}
+univar('Revenue',customers,'category')
+```
+Most users would not bring revenue
+```{r}
+univar('Administrative',customers,'category')
+```
+Most of users did not get into administrative pages
+
+```{r}
+univar('Administrative_Duration',customers)
+```
+The range of time spent on administrative sites was from -1 to 3398.75 minutes.
+For most people spent between 0 and 352 minutes in the administrative sites
+The average time spent on the admin sites was 81.68 minutes but
+given most peple did not get into administrative pages alot of users spent 0 minutes in the pages.
+Graph is also skewed to the right
+```{r}
+univar('Informational',customers,'category')
+```
+Most of users did not get into administrative pages
+
+```{r}
+univar('Informational_Duration',customers)
+```
+The range of time spent on informational sites was from -1 to 2549 minutes.
+For most people spent between 0 and 199 minutes in the informational sites
+The average time spent on the informational sites was 81.68 minutes but
+given most peple did not get into informational pages alot of users spent 0 minutes in the pages.
+Graph is also skewed to the right, meaning more people are found to the first parts of the graph
+
+```{r}
+univar('ProductRelated',customers)
+```
+The average number of product pages visited was 32, with most people visiting 1 page
+the number of pages visited ranged from 0 to 705 pages and most people visited between 2 and 110 pages.
+Graph is also skewed to the right, meaning more people are found to the first parts of the graph
+
+
+```{r}
+univar('ProductRelated_Duration',customers)
+```
+The range of time spent on product related sites was from -1 to 63973.52 minutes.
+For most people spent between 0 and 4313.45 minutes in the product related sites
+The average time spent on the product related pages was 1207.51 minutes but
+given most people visited 1 product related page alot of users spent 0 minutes in the pages.
+Graph is also skewed to the right
+
+
+```{r}
+univar('BounceRates',customers)
+```
+Bounce rates ranged from 0 and 0.2, and most users lie between 0 and 0.15
+The average bounce rate was at 0.02, most users had an bounce rate of 0.
+the graph is mostly skewed to the right
+
+```{r}
+univar('ExitRates',customers)
+```
+Exit rates ranged from 0 and 0.2, and most users lie between 0.0045 and 0.175
+The average exit rate was at 0.0415, most users had an exit rate of 0.2.
+the graph is mostly skewed to the right
+
+```{r}
+univar('PageValues',customers)
+```
+Alot of users visited 0 pages before completing an transaction, while the average pages visited was 5.
+The number of pages visited before making a transaction ranged from 0 to 361 pages.
+Graph is also skewed to the right, meaning more people are found to the first parts of the graph
+
+```{r}
+univar('SpecialDay',customers,'category')
+```
+Most people did not visit the site close to special days
+
+```{r}
+univar('OperatingSystems',customers,'category')
+```
+Most users visiting the site used the Operating system encoded as 2.
+Operating systems 1,2 and 3 were the most commonly used
+
+```{r}
+univar('Browser',customers,'category')
+```
+Browsers 2 were the most commonly used, However browser 1 was also highly used.
+
+```{r}
+univar('Region',customers,'category')
+```
+Most users were from region 1 and 2 respectively
+Region 5 had the least number of users.
+
+```{r}
+univar('TrafficType',customers,'category')
+```
+Most users had traffic type 2,1 and 3 respectively, with few users with traffic 16,17 and 18
+```{r}
+ggplot(customers,aes(customers$Administrative,fill=customers$Revenue))+ geom_bar()
+```
+few users who had a low count of administrative pages had led to revenue to the site, with most people with a count of 0 leading to no revenue
+
+```{r}
+ggplot(customers,aes(admin_duration,fill=revenue))+ geom_histogram()
+```
+few users who had a low duration in administrative pages had led to revenue to the site, with most people with a count of 0 leading to no revenue
+
+```{r}
+ggplot(customers,aes(info,fill=revenue))+ geom_bar()
+```
+few users who had a low count of informational pages had led to revenue to the site, with most people with a count of 0 leading to no revenue
+
+```{r}
+ggplot(customers,aes(info_duration,fill=revenue))+ geom_histogram()
+```
+few users who had a low duration in informational pages had led to revenue to the site, with most people with a count of 0 leading to no revenue.
+
+```{r}
+ggplot(customers,aes(product,fill=revenue))+ geom_histogram()
+```
+few users who had a low count of product pages had led to revenue to the site, with most people leading to no revenue
+
+```{r}
+ggplot(customers,aes(product_related_duration,fill=revenue))+ geom_histogram()
+```
+few users who had a low duration in product pages had led to revenue to the site, with most people leading to no revenue
+
+```{r}
+ggplot(customers,aes(bounce_rates,fill=revenue))+ geom_histogram()
+```
+people with higher bounce rates tend to not lead to revenue compared to a high number of users leading to revenue with low bounce rates
+
+```{r}
+ggplot(customers,aes(exit_rates,fill=revenue))+ geom_histogram()
+```
+people with higher exit rates tend to not lead to revenue compared to a high number of users leading to revenue with low exit rates
+
+```{r}
+ggplot(customers,aes(page_values,fill=revenue))+ geom_histogram()
+```
+most users with a low page value led to no revenue, but as the page values the users led to revenue
+
+```{r}
+ggplot(customers,aes(special_day,fill=revenue))+ geom_bar()
+```
+Fewer people visited the pages as it got closer to special days.
+The most revenue was seen on days not close to special days
+
+```{r}
+ggplot(customers,aes(os,fill=revenue))+ geom_bar()
+```
+```{r}
+ggplot(customers,aes(browser,fill=revenue))+ geom_bar()
+```
+Since most users used browser 2 there were more people leading to revenue than other browsers
+
+```{r}
+ggplot(customers,aes(region,fill=revenue))+ geom_bar()
+```
+Users from region 3 were the second most but had the better ratio of revenue and non revenue users compared to  region 1
+```{r}
+ggplot(customers,aes(traffic_type,fill=revenue))+ geom_bar()
+```
+Users using traffic types 1 to 4 had the highest revenue customers with traffic type 4 having the best ratio of revenue and non revenue
+
+```{r}
+ggplot(customers,aes(page_values,fill=revenue))+ geom_histogram()
+```
+few users who had a low count of pages values had led to revenue to the site, with most people leading to no revenue
+
+```{r}
+ggplot(customers,aes(admin_duration,info_duration))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Users with less administrative duration tend to spend more time on informational pages.
+As administrative duration increases users tend to spend less time on informational pages.
+
+```{r}
+ggplot(customers,aes(admin_duration,info_duration,color=revenue))+ geom_point(alpha=0.5)
+```
+users who led to a revenue had lower durations in administrative pages
+
+```{r}
+ggplot(customers,aes(admin_duration,product_related_duration))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+As administrative duration increases users tend to spend more time on product pages.
+
+```{r}
+ggplot(customers,aes(admin_duration,product_related_duration,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Users leading to a revenue had a good blend of both tiome on administrative and product
+
+```{r}
+ggplot(customers,aes(admin_duration,bounce_rates))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Most users had really low bounce rates and durations in administrative pages
+
+```{r}
+ggplot(customers,aes(admin_duration,bounce_rates,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+users who led to revenue had an increase in bounce rates as their duration in administrative pages increased while users leading to no revenue had a decrease in bounce rates as their duration in administrative pages increased
+
+```{r}
+ggplot(customers,aes(admin_duration,exit_rates))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Exit rates decreased as user duration in administrative pages increased
+
+```{r}
+ggplot(customers,aes(admin_duration,exit_rates,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+
+Exit rates for user leading to no revenue decreased as their duration in administrative pages increased while the exit rates of thos leading to revenue remained fairly constant
+
+```{r}
+ggplot(customers,aes(admin_duration,page_values))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Users had fairly low page values and durations in administrative pages
+
+```{r}
+ggplot(customers,aes(admin_duration,page_values,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+
+Page values of users leading to revenue tended to decrease as their duration in administrative pages increased whilr those of users not reading to revenue remained really low
+
+
+```{r}
+ggplot(customers,aes(exit_rates,bounce_rates))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+The general trend is as bounce rates increase so do exit rates
+
+```{r}
+ggplot(customers,aes(exit_rates,bounce_rates,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+While both customers leading to and not to a revenue have bounce rates increase with exit rates, those leading to a revenue had a slower rate of increment.
+
+```{r}
+ggplot(customers,aes(product_related_duration,bounce_rates))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Bounce rates tend to increase with an increase in product related duration.
+```{r}
+ggplot(customers,aes(product_related_duration,bounce_rates,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+
+Bounce rates tend to increase with an increase in product related duration, for both users leading to revenue and not.
+
+```{r}
+ggplot(customers,aes(product_related_duration,exit_rates))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+exit rates tend to decrease with an increase in product related duration.
+```{r}
+ggplot(customers,aes(product_related_duration,exit_rates,color=revenue))+ geom_point(alpha=0.5)+ geom_quantile(size=0.9 ,alpha = 1,quantiles=0.50)
+```
+Exit rates tend to remain fairly constant for users leading to revenue while the others tend to have exit rates dropping with increase in product related duration
+
+```{r}
+label_encode <- function (column,dataframe){
+  data <- dataframe[[column]]
+  new_data <- as.integer(factor(data))
+  # print(new_data)
+  return (new_data)
+}
+users <- customers
+
+users$Month <- label_encode('Month',users)
+users$VisitorType <- label_encode('VisitorType',users)
+users$Weekend <- label_encode('Weekend',users)
+users$Revenue <- label_encode('Revenue',users)
+```
+```{r}
+get_lower_tri<-function(cor_mat){
+    cor_mat[upper.tri(cor_mat)] <- NA
+    return(cor_mat)
+}
+
+cor_mat <- round(cor(users),4)
+lower <- get_lower_tri(cor_mat)
+melted <- melt(lower, na.rm = TRUE)
+head(melted)
+
+ggplot(melted, aes(Var1, Var2))+  geom_tile(aes(fill = value), colour = "white") +
+  scale_fill_gradient2(low = "#222222", high = "#1abc9c", mid = "#222222")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+There was a fair relationship between revenue and page values
+The other highly related variables that had strong relationships were ones that were derived from each other:
+<ul>
+<li>Administrative and Administrative_Duration
+<li>Informational and Informational duration
+<li>ProductRelated and ProductRelated duration
+</ul>
+
+<h1>**Multivariate**</h1>
+```{r}
+library('ClusterR')
+library('caret')
+
+get_train_validation <- function (dataset){
+  # Geting the row numbers for train sample (80% of the dataset)
+  train <- sample(c(1:nrow(dataset)),size = ceiling(0.80*nrow(dataset)),replace = FALSE)
+  # training set == part of the dataset in the train sample
+  train_set <- dataset[train,]
+  # Validation set == part of the dataset not in the train sample
+  Validation_set <- dataset[-train,]
+  # fix for R not accepting multiple argument returns
+  sets <- list("Train" = train_set, "Validation" = Validation_set)
+  return (sets)
+}
+
+normalize <- function(x){
+  return ((x-min(x)) / (max(x)-min(x)))
+}
+users.norm <- users
+for (name in colnames(users)){
+  users.norm[[name]] <- normalize(users[[name]])
+}
+head(users.norm)
+```
+I decided to use pca to reduce the number of my columns
+
+```{r}
+userd <- prcomp(users.norm[c(-18)], scale. = T)
+screeplot(userd, type = "l", npcs = 15, main = "Screeplot of the first 10 PCs")
+abline(h = 1, col="red", lty=5)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+
+cumpro <- cumsum(userd$sdev^2 / sum(userd$sdev^2))
+plot(cumpro[0:15], xlab = "PC #", ylab = "Amount of explained variance", main = "Cumulative variance plot")
+abline(v = 6, col="blue", lty=5)
+abline(h = 0.88759, col="blue", lty=5)
+legend("topleft", legend=c("Cut-off @ PC6"),
+       col=c("blue"), lty=5, cex=0.6)
+```
+Pca reduction can effectively reduce dimensionality from 17 to 6
+```{r}
+p_ca <- function (dataset){
+sets <- get_train_validation(dataset)
+
+pca.train <-sets$Train[,-c(18)]
+pca.test <-sets$Validation[,-c(18)]
+
+prin_comp <- prcomp(pca.train, scale. = T)
+
+train.data <- data.frame(Revenue = sets$Train[[18]],prin_comp$x)
+train.data <- train.data[,1:7]
+
+test.data <- predict(prin_comp, newdata = pca.test)
+test.data <- as.data.frame(test.data)
+test.data$PC7 <-sets$Validation[[18]]
+
+#test.data <- bind_cols(test.data, sets$Validation[[18]])
+
+test.data <- test.data[,c(1:7)]
+
+sets <- list("Train" = train.data, "Test" = test.data)
+return (sets)
+}
+```
+
+
+
+<h1>Implementing the solution</h1>
+
+
+```{r}
+
+
+k_means <- function (train_set, Validation_set,n_start,max_iter,algorthm){
+
+  # getting the sets
+  x <- ncol(train_set)
+  x1 <- x-1
+  
+  train_x <- train_set[,2:x]
+  train_y <- train_set[[1]]
+
+  validation_x <- Validation_set[,1:x1]
+  validation_y <- Validation_set[[x]]
+
+  model <- kmeans(train_x,2,nstart = n_start,iter.max = max_iter, algorithm=algorthm)
+  pred <- predict_KMeans(validation_x, model$centers, threads = 1)
+  if (pred[pred==2] > pred[pred==1]){
+    pred[pred==2] <- 0
+  }else{
+    pred[pred==1] <- 0
+    pred[pred==2] <- 1
+  }
+  t <- table(validation_y, pred)
+  accur <- cm_2x2_accuracy(t)
+
+  hyper <- list('nstart :', n_start,'iter.max :', max_iter,'algorithm :',algorthm)
+  resul <- list("model" = model,'table'= t, "Accuracy" = accur, 'Hyper_parameters' = hyper)
+  return (resul)
+}
+cm_2x2_accuracy <- function (t){
+  tp <- t[[1]]
+  fp <- t[[2]]
+  fn <- t[[3]]
+  tn <- t[[4]]
+  acuracy <-(tp+tn )/ (tp+fp+fn+tn)
+  return (acuracy)
+}
+```
+
+```{r}
+wssplot <- function(data, nc=15, seed=123){
+               wss <- (nrow(data)-1)*sum(apply(data,2,var))
+               for (i in 2:nc){
+                    set.seed(seed)
+                    wss[i] <- sum(kmeans(data, centers=i)$withinss)}
+                plot(1:nc, wss, type="b", xlab="Number of groups",
+                     ylab="Sum of squares within a group")}
+
+wssplot(users[c(-18)], nc = 10)
+```
+The clusters are fluctuating and mostly at 2 and 6 clusters, ie here is where we see a gradient shift starting and where it starts flattening at. While making a model at 6 clusters, i want to evaluate the performance of the models, hence 2 will be my cluster size.
+<p>Given our target is a result which has either a true or false. The goal is to let the model come up with 2 clusters and this coinceides with my choice</p>
+
+```{r}
+options(warn=-1) 
+accuracy <- 0
+algorithm <- c("Hartigan-Wong", "Lloyd", "Forgy", "MacQueen")
+start.n<- c(2 : 17)
+
+iter.max <- c(10,15,20,25,30,35,40,45,50,55,60,65,70)
+for (algo in algorithm){
+  for (start in start.n){
+    for (iter in iter.max){
+      # Geting different train and validation sets on each run
+      sets <-suppressWarnings(p_ca(users.norm))
+      results <- suppressWarnings(k_means(sets$Train,sets$Test,n_start = start,max_iter = iter,algorthm = algo ))
+      if (results$Accuracy > accuracy){
+        best_table <- results$table
+        accuracy <- results$Accuracy
+        best_model <- results$model
+        best_hypers <- results$Hyper_parameters
+      }
+    }
+  }
+}
+
+print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
+confusionMatrix(best_table)
+```
+
+<ul>
+<p>The k means performed  with 79.87 % accuracy.
+<li> 1839 true positives
+<li> 227 false positives
+<li> 264 false negatives and
+<li> 109 true negatives
+</ul>
+The model did not perform as well as i had hoped it had alot more false negatives than true negatives
+
+<h1>**Heirachical Clustering**</h1>
+
+```{r}
+users.scald <- users
+
+d <- dist(users.scald[,-c(18)])
+h_clust <- hclust(d, method = "ward.D2")
+plot(h_clust)
+```
+Selecting the number of clusters to use is a choice made by the user after creating the tree
+There are 2 main clusters  in the dendogram, with the left having a more doinant number of clusters.
+for 3 clusters : the left main branch and the two branches of the right main branch would form the clusters
+for 4 clusters : the left main branch and the three branches of the right main branch would form the clusters
+
+But for comparison purpose, i will use the same clusters as in the k means, also for ease of evaluating the performance of the trees
+```{r}
+groups <- cutree(h_clust,k=2)
+
+h_users <- users.scald
+h_users$Revenue <- groups
+
+table(groups)
+```
+Given there is no method for 'predict' applied to an object of class "hclust" meaning the only way to check the performance of the heirachical tree would be to train a supervised model and use that to predict your outputs.
+However That adds another layer of uncertainty. Say for instance the tree was perfect but the model achieves a 89% accuracy, or the tree had a not so perfect accuracy but the model achieves 98+ % accuracy in the end the result will be weighed down with more than one layer of uncertainty
+```{r}
+library('class')
+accuracy <- function(x){sum(diag(x)/(sum(rowSums(x)))) * 100}
+k_nn <- function (train_,test_,K=21){
+  # getting the sets
+  x <- ncol(train_)
+  x1 <- x-1
+  
+  train_x <- train_[,2:x]
+  train_y <- train_[[1]]
+
+  validation_x <- test_[,1:x1]
+  validation_y <- test_[,x]
+  
+  val_len <- length(validation_y[validation_y==1])
+  pred <- knn(train = train_x, test = validation_x,
+                      cl = train_y, k = K)
+
+  t <- table(validation_y,pred)
+
+  accur <- cm_2x2_accuracy(t)
+
+  if ((length(pred[pred==1]))<(val_len/2)){
+    accur <- 0
+  }# Eliminating a couple of imbalanced models
+  hyper <- list('k :', K)
+  resul <- list('table'= t,"Accuracy" = accur, 'Hyper_parameters' = hyper)
+  return (resul)
+}
+```
+
+```{r}
+distances <- c('euclidean', 'maximum','manhattan','canberra','binary','minkowski')
+methods <- c('ward.D2','single', 'median', 'average', 'centroid', 'ward.D',  'mcquitty')
+accuracy <- 0
+for (dist in distances){
+  print(dist)
+  for (meth in methods){
+    for (i in c(5,10,15,20,25,30)){
+      sets <- p_ca(users.norm)
+      train <- sets$Train
+      valid <- sets$Test
+
+      d <- dist(train[,-c(1)],method=dist)
+      h_clust <- hclust(d, method = meth)
+      groups <- cutree(h_clust,k=2)
+      if (length(groups[groups==2]) > length(groups[groups==1])){
+        groups[groups==2] <- 0
+
+      }else{
+        groups[groups==1] <- 0
+        groups[groups==2] <- 1
+      }
+      
+      
+      h_users <- train
+      h_users$Revenue <- groups
+
+      results <- k_nn(h_users,valid,i)
+      
+      if (results$Accuracy > accuracy){
+            best_table <- results$table
+            accuracy <- results$Accuracy
+            best_hypers <- results$Hyper_parameters
+            best_tree <- h_clust
+            best_method <- meth
+            best_distance <- dist
+      }
+    }
+  }
+}
+print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
+confusionMatrix(best_table)
+```
+
+<ul>
+<p>The heirachical model performed really well with 81.34 % accuracy.
+<li> 1909 true positives
+<li> 149 false positives
+<li> 306 false negatives and
+<li> 75 true negatives
+</ul>
+the model has performed really well classifying the users
+
+
+It was the best of the two models running here
+
+<h1>**Comparing The models**</h1>
+<ul>
+<li>K means requires you to have knowledge on the number of clusters neeeded prior to the creation of the model while in heirachical you get to see the clusters and can chose the number od clusters you want in your model
+<li>In K means you can set what to use as a cluster center while  in heirachical clustering it starts with n clusters and eventually creates one large cluster
+<li>Clusters in K means dont overlap while in heirachical the clusters are nested
+
+</ul>
+<h1>**Challenging the solution**</h1>
+
+Given these are three models I gauged to see their performances and tuned them to get the best models in each category, using other classification models and compare them to see which one performs best.
+
+<h1>**Conclusion**</h1>
+
+While the heirachical clustering was more accurate however since i kept geting an imbalanced validation set it will not be good enough to evaluate if the model could predict
+
+<h1>**Follow up questions**</h1>
+
+<h2>**Did we have the right data**</h2>
+Yes the data was appropriate for the question asked
+
+<h2>**Did we have the right questions**</h2>
+Yes the question was right for the data provided
+
+
+
