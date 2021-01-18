@@ -493,6 +493,7 @@ The other highly related variables that had strong relationships were ones that 
 </ul>
 
 <h1>**Multivariate**</h1>
+
 ```{r}
 library('ClusterR')
 library('caret')
@@ -573,14 +574,15 @@ k_means <- function (train_set, Validation_set,n_start,max_iter,algorthm){
   # getting the sets
   x <- ncol(train_set)
   x1 <- x-1
-  
+  # Geting the train set
   train_x <- train_set[,2:x]
   train_y <- train_set[[1]]
-
+  # Geting the valudation set
   validation_x <- Validation_set[,1:x1]
   validation_y <- Validation_set[[x]]
-
+  # Creating a kmeans model
   model <- kmeans(train_x,2,nstart = n_start,iter.max = max_iter, algorithm=algorthm)
+  # Predicting the values
   pred <- predict_KMeans(validation_x, model$centers, threads = 1)
   if (pred[pred==2] > pred[pred==1]){
     pred[pred==2] <- 0
@@ -588,20 +590,23 @@ k_means <- function (train_set, Validation_set,n_start,max_iter,algorthm){
     pred[pred==1] <- 0
     pred[pred==2] <- 1
   }
+  # getting the table from the predicted and validation values
   t <- table(validation_y, pred)
+  # getting the accuracy
   accur <- cm_2x2_accuracy(t)
-
+  # Getting the model,table,accuracy and hyperparameters
   hyper <- list('nstart :', n_start,'iter.max :', max_iter,'algorithm :',algorthm)
   resul <- list("model" = model,'table'= t, "Accuracy" = accur, 'Hyper_parameters' = hyper)
   return (resul)
 }
+# Calculating the accuracy of a 2*2 matrix
 cm_2x2_accuracy <- function (t){
   tp <- t[[1]]
   fp <- t[[2]]
   fn <- t[[3]]
   tn <- t[[4]]
   acuracy <-(tp+tn )/ (tp+fp+fn+tn)
-  return (acuracy)
+  return (acuracy)#returning the accuracy
 }
 ```
 
@@ -616,11 +621,11 @@ wssplot <- function(data, nc=15, seed=123){
 
 wssplot(users[c(-18)], nc = 10)
 ```
-The clusters are fluctuating and mostly at 2 and 6 clusters, ie here is where we see a gradient shift starting and where it starts flattening at. While making a model at 6 clusters, i want to evaluate the performance of the models, hence 2 will be my cluster size.
+The clusters are fluctuating and mostly at 2 and 6 clusters, ie here is where we see a gradient shift starting and where it starts flattening at, it also has the largest gradient shift . While making a model at 6 clusters, i want to evaluate the performance of the models, hence 2 will be my cluster size.
 <p>Given our target is a result which has either a true or false. The goal is to let the model come up with 2 clusters and this coinceides with my choice</p>
 
 ```{r}
-options(warn=-1) 
+# options(warn=-1)
 accuracy <- 0
 algorithm <- c("Hartigan-Wong", "Lloyd", "Forgy", "MacQueen")
 start.n<- c(2 : 17)
@@ -631,8 +636,11 @@ for (algo in algorithm){
     for (iter in iter.max){
       # Geting different train and validation sets on each run
       sets <-suppressWarnings(p_ca(users.norm))
+      # Supressing the warnings to make it not that long with warnings
+      # Geting the results from the custom K_means function
       results <- suppressWarnings(k_means(sets$Train,sets$Test,n_start = start,max_iter = iter,algorthm = algo ))
       if (results$Accuracy > accuracy){
+        # Saving the current results when accuracy increases
         best_table <- results$table
         accuracy <- results$Accuracy
         best_model <- results$model
@@ -641,7 +649,6 @@ for (algo in algorithm){
     }
   }
 }
-
 print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
 confusionMatrix(best_table)
 ```
@@ -687,24 +694,28 @@ k_nn <- function (train_,test_,K=21){
   # getting the sets
   x <- ncol(train_)
   x1 <- x-1
-  
+  # Geting the train set
   train_x <- train_[,2:x]
   train_y <- train_[[1]]
-
+  # Geting the valudation set
   validation_x <- test_[,1:x1]
   validation_y <- test_[,x]
-  
+  #getting the length of the validation set so as tocompare it
   val_len <- length(validation_y[validation_y==1])
+  # Creating a knn model and geting the predictions
   pred <- knn(train = train_x, test = validation_x,
                       cl = train_y, k = K)
 
+  # getting the table from the predicted and validation values
   t <- table(validation_y,pred)
-
+  # getting the accuracy
   accur <- cm_2x2_accuracy(t)
 
   if ((length(pred[pred==1]))<(val_len/2)){
     accur <- 0
   }# Eliminating a couple of imbalanced models
+
+  # Geting the hyperparameter k
   hyper <- list('k :', K)
   resul <- list('table'= t,"Accuracy" = accur, 'Hyper_parameters' = hyper)
   return (resul)
@@ -719,13 +730,17 @@ for (dist in distances){
   print(dist)
   for (meth in methods){
     for (i in c(5,10,15,20,25,30)){
+      # Geting the train and validation sets
       sets <- p_ca(users.norm)
       train <- sets$Train
       valid <- sets$Test
-
+      # Getting the distances in the dataset
       d <- dist(train[,-c(1)],method=dist)
+      # using the distances to cluster the dataset
       h_clust <- hclust(d, method = meth)
+      # Grouping the dataset to two clusters
       groups <- cutree(h_clust,k=2)
+      # Eliminating some errors
       if (length(groups[groups==2]) > length(groups[groups==1])){
         groups[groups==2] <- 0
 
@@ -733,13 +748,12 @@ for (dist in distances){
         groups[groups==1] <- 0
         groups[groups==2] <- 1
       }
-      
-      
+      # Geting the final dataset and giving it the clusters from the clustering
       h_users <- train
       h_users$Revenue <- groups
-
+      # Running the custom knn model
       results <- k_nn(h_users,valid,i)
-      
+      # Saving the values of the best dataset
       if (results$Accuracy > accuracy){
             best_table <- results$table
             accuracy <- results$Accuracy
@@ -751,12 +765,16 @@ for (dist in distances){
     }
   }
 }
-print(list('Best Accuracy :',accuracy*100,'With Hyperparameters at:',best_hypers))
+plot(best_tree)
+print(list('Best Accuracy :',accuracy*100,'Best distance',best_distance ,'Best method ',best_method ,'With Hyperparameters at:',best_hypers))
 confusionMatrix(best_table)
 ```
+The best heirachical model and the original heirachical model have different clusterings, with the best model having more closely knit clusterings,
+This model has clustered two main clusters representing our Revenue values and the larger cluster in terms of numbers is closely knit to the single main cluster which could imply the lesser cluster has little that differentiates it from the larger cluster
+
 
 <ul>
-<p>The heirachical model performed really well with 81.34 % accuracy.
+<p>The heirachical model performed really well with 81.43 % accuracy.
 <li> 1909 true positives
 <li> 149 false positives
 <li> 306 false negatives and
@@ -784,10 +802,10 @@ While the heirachical clustering was more accurate however since i kept geting a
 
 <h1>**Follow up questions**</h1>
 
-<h2>**Did we have the right data**</h2>
+<h2>Did we have the right data</h2>
 Yes the data was appropriate for the question asked
 
-<h2>**Did we have the right questions**</h2>
+<h2>Did we have the right questions</h2>
 Yes the question was right for the data provided
 
 
